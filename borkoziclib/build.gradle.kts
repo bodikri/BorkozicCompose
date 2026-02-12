@@ -15,8 +15,20 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles("consumer-rules.pro")
+
+        ndk {
+            abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64"))
+        }
+    }
+    externalNativeBuild {
+        ndkBuild {
+            path = File("src/main/jni/Android.mk")
+        }
     }
 
+    buildFeatures {
+        aidl = true
+    }
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -33,6 +45,7 @@ android {
 }
 
 dependencies {
+    implementation("gov.nist.math:jama:1.0.3")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
