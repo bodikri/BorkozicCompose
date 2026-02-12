@@ -24,3 +24,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "BorkozicCompose"
 include(":app")
+include(":borkoziclib")
