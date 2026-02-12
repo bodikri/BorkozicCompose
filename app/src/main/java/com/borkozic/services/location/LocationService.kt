@@ -3,6 +3,7 @@ package com.borkozic.services.location
 import android.app.*
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.location.Location
 import android.os.Binder
 import android.os.Build
@@ -46,10 +47,10 @@ class LocationService : Service() {
     private fun createLocationRequest() {
         locationRequest = LocationRequest.Builder(
             Priority.PRIORITY_HIGH_ACCURACY,
-            5000 // 5 seconds interval
+            5000
         ).apply {
-            setMinUpdateIntervalMillis(2500) // 2.5 seconds fastest interval
-            setMaxUpdateDelayMillis(10000) // 10 seconds max delay
+            setMinUpdateIntervalMillis(2500)
+            setMaxUpdateDelayMillis(10000)
         }.build()
     }
 
@@ -82,14 +83,20 @@ class LocationService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Borkozic Location")
             .setContentText("Търсене на GPS сигнал...")
-            .setSmallIcon(R.drawable.ic_location)  // Ще добавим икона
+            .setSmallIcon(R.drawable.ic_location)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
             .build()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForeground(NOTIFICATION_ID, createNotification())
+        // ⚡ ПРОВЕРКА ЗА ANDROID 14+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            // Трябва да имаме FOREGROUND_SERVICE_LOCATION permission
+            startForeground(NOTIFICATION_ID, createNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
+        } else {
+            startForeground(NOTIFICATION_ID, createNotification())
+        }
         startLocationUpdates()
         return START_STICKY
     }
@@ -105,7 +112,6 @@ class LocationService : Service() {
             )
             isUpdatingLocation = true
 
-            // Update notification
             val notification = NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle("Borkozic Location")
                 .setContentText("GPS сигнал активен")
@@ -118,7 +124,6 @@ class LocationService : Service() {
             notificationManager.notify(NOTIFICATION_ID, notification)
 
         } catch (e: SecurityException) {
-            // No location permission
             stopSelf()
         }
     }
@@ -139,7 +144,6 @@ class LocationService : Service() {
     }
 
     fun getCurrentLocation(): Location? = currentLocation
-
     fun isLocationUpdatesActive(): Boolean = isUpdatingLocation
 
     override fun onBind(intent: Intent): IBinder = binder

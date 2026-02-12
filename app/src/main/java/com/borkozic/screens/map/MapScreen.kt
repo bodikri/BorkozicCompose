@@ -1,7 +1,10 @@
 package com.borkozic.screens.map
 
 import android.Manifest
+import android.content.pm.PackageManager
 import android.location.Location
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -9,6 +12,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.borkozic.services.location.LocationPermissionHelper
 import com.borkozic.services.location.LocationViewModel
@@ -30,6 +34,16 @@ fun MapScreen(
     val isServiceRunning by locationViewModel.isServiceRunning.collectAsState()
 
     var showPermissionDialog by remember { mutableStateOf(!hasPermission) }
+    val multiplePermissionsLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val allGranted = permissions.values.all { it }
+        if (allGranted) {
+            locationViewModel.startLocationService()
+        } else {
+            // Покажете съобщение
+        }
+    }
 
     LaunchedEffect(Unit) {
         if (hasPermission && !isServiceRunning) {
@@ -80,17 +94,22 @@ fun MapScreen(
 
             Button(
                 onClick = {
-                    if (LocationPermissionHelper.hasPermissions(context)) {
+                    val permissions = LocationPermissionHelper.requiredPermissions
+                        .filter {
+                            ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
+                        }.toTypedArray()
+
+                    if (permissions.isNotEmpty()) {
+                        multiplePermissionsLauncher.launch(permissions)
+                    } else {
                         if (isServiceRunning) {
                             locationViewModel.stopLocationService()
                         } else {
                             locationViewModel.startLocationService()
                         }
-                    } else {
-                        showPermissionDialog = true
                     }
                 }
-            ) {
+            ){
                 Text(if (isServiceRunning) "Стоп GPS" else "Старт GPS")
             }
         }
