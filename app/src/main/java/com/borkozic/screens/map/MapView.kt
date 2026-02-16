@@ -1,9 +1,6 @@
 package com.borkozic.screens.map
 
 import android.graphics.Bitmap
-import android.graphics.Bitmap.Config.ARGB_8888
-import android.graphics.Canvas
-import android.graphics.Paint
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -11,64 +8,71 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
-import com.borkozic.map.OzfDecoder
+import com.borkozic.map.MapInformation
+import com.borkozic.map.MapLoader
+import com.borkozic.map.SASMapLoader
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
+import kotlin.math.ceil
+import kotlin.math.floor
 import kotlin.math.min
 
 @Composable
 fun MapView(
     modifier: Modifier = Modifier,
-    mapFile: File? = null
+    mapInfo: MapInformation? = null,
+    initialZoom: Int = 10
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var mapBitmap by remember { mutableStateOf<Bitmap?>(null) }
-    var mapWidth by remember { mutableStateOf(0) }
-    var mapHeight by remember { mutableStateOf(0) }
+    var offsetX by remember { mutableFloatStateOf(0f) }
+    var offsetY by remember { mutableFloatStateOf(0f) }
+    var zoom by remember { mutableIntStateOf(initialZoom) }
 
-    // Позиция и мащаб
-    var offsetX by remember { mutableStateOf(0f) }
-    var offsetY by remember { mutableStateOf(0f) }
-    var scale by remember { mutableStateOf(1f) }
+    val tileCache = remember { mutableMapOf<String, Bitmap>() }
+    val tileSize = 256
 
-    // Декодер
-    val decoder = remember { OzfDecoder() }
+    var visibleTiles by remember { mutableStateOf(emptyList<Triple<Int, Int, Int>>()) }
 
-    // Зареждане на карта
-    LaunchedEffect(mapFile) {
-        if (mapFile != null && mapFile.exists()) {
-            withContext(Dispatchers.IO) {
-                try {
-                    // Отваряне на картата
-                    val success = decoder.openImage(mapFile)
+    // Функция за изчисляване на видимите тайлове
+    fun updateVisibleTiles(canvasSize: Size) {
+        val startX = floor((-offsetX) / tileSize).toInt()
+        val startY = floor((-offsetY) / tileSize).toInt()
+        val endX = ceil((-offsetX + canvasSize.width) / tileSize).toInt()
+        val endY = ceil((-offsetY + canvasSize.height) / tileSize).toInt()
 
-                    if (success) {
-                        // TODO: Прочети размерите на картата от .map файл
-                        // Засега слагаме тестови размери
-                        mapWidth = 1024
-                        mapHeight = 1024
-
-                        // Зареждане на първия тайл
-                        loadTile(decoder, 0, 0, 64, 64)?.let { bitmap ->
-                            mapBitmap = bitmap
-                        }
-                    } else {
-                        println("Failed to open map file: ${mapFile.absolutePath}")
-                    }
-                } catch (e: Exception) {
-                    println("Error loading map: ${e.message}")
-                    e.printStackTrace()
-                }
+        val newTiles = mutableListOf<Triple<Int, Int, Int>>()
+        for (x in startX..endX) {
+            for (y in startY..endY) {
+                newTiles.add(Triple(zoom, x, y))
             }
         }
+        visibleTiles = newTiles
+    }
+
+    LaunchedEffect(Unit) {
+        MapLoader.initialize(context)
+        SASMapLoader.initialize(context)
+    }
+
+    LaunchedEffect(mapInfo) {
+        mapInfo?.let {
+            MapLoader.setMap(it)
+            SASMapLoader.setMap(it)
+        }
+    }
+
+    LaunchedEffect(zoom) {
+        MapLoader.setZoom(zoom)
+        SASMapLoader.setZoom(zoom)
     }
 
     Canvas(
@@ -86,64 +90,75 @@ fun MapView(
             .pointerInput(Unit) {
                 detectTapGestures(
                     onDoubleTap = { tapOffset ->
-                        scale = min(scale * 1.5f, 4f)
-                        offsetX = (offsetX - tapOffset.x) * 1.5f + tapOffset.x
-                        offsetY = (offsetY - tapOffset.y) * 1.5f + tapOffset.y
+                        zoom = min(zoom + 1, 19)
+                        val scaleFactor = 2f
+                        offsetX = (offsetX - tapOffset.x) * scaleFactor + tapOffset.x
+                        offsetY = (offsetY - tapOffset.y) * scaleFactor + tapOffset.y
                     }
                 )
             }
-    ) {
-        // Рисуване на картата
-        mapBitmap?.let { bitmap ->
-            drawImage(
-                image = bitmap.asImageBitmap(),
-                srcOffset = IntOffset.Zero,
-                srcSize = IntSize(mapWidth, mapHeight),
-                dstOffset = IntOffset(offsetX.toInt(), offsetY.toInt()),
-                dstSize = IntSize(
-                    width = (mapWidth * scale).toInt(),
-                    height = (mapHeight * scale).toInt()
-                )
-            )
-        }
+    ) {  // ⬅️ НЯМА параметър!
+        // Размерът е достъпен чрез this.size
+        val canvasWidth = this.size.width
+        val canvasHeight = this.size.height
 
-        // Ако няма карта, рисуваме празен фон
-        if (mapBitmap == null) {
-            drawRect(
-                color = androidx.compose.ui.graphics.Color.LightGray,
-                size = size
-            )
+        val startX = floor((-offsetX) / tileSize).toInt()
+        val startY = floor((-offsetY) / tileSize).toInt()
+        val endX = ceil((-offsetX + canvasWidth) / tileSize).toInt()
+        val endY = ceil((-offsetY + canvasHeight) / tileSize).toInt()
+
+        // Актуализираме видимите тайлове
+        val newTiles = mutableListOf<Triple<Int, Int, Int>>()
+        for (x in startX..endX) {
+            for (y in startY..endY) {
+                newTiles.add(Triple(zoom, x, y))
+            }
+        }
+        visibleTiles = newTiles
+
+        // Рисуваме всички видими тайлове
+        for (x in startX..endX) {
+            for (y in startY..endY) {
+                val screenX = offsetX + x * tileSize
+                val screenY = offsetY + y * tileSize
+                val cacheKey = "$zoom/$x/$y"
+                val tileBitmap = tileCache[cacheKey]
+
+                if (tileBitmap != null) {
+                    drawImage(
+                        image = tileBitmap.asImageBitmap(),
+                        dstOffset = IntOffset(screenX.toInt(), screenY.toInt()),
+                        dstSize = IntSize(tileSize, tileSize)
+                    )
+                } else {
+                    drawRect(
+                        color = androidx.compose.ui.graphics.Color.LightGray,
+                        topLeft = Offset(screenX, screenY),
+                        size = androidx.compose.ui.geometry.Size(tileSize.toFloat(), tileSize.toFloat())
+                    )
+                }
+            }
         }
     }
-}
 
-// Функция за зареждане на тайл
-private fun loadTile(
-    decoder: OzfDecoder,
-    x: Int,
-    y: Int,
-    width: Int,
-    height: Int
-): Bitmap? {
-    // TODO: Имплементирай реален тайл лоудър
-    // Тестова имплементация
-    val bitmap = Bitmap.createBitmap(width, height, ARGB_8888)
-    val canvas = Canvas(bitmap)
-    val paint = Paint().apply {
-        style = Paint.Style.FILL
+    // Асинхронно зареждане на липсващи тайлове
+    LaunchedEffect(visibleTiles) {
+        for (tile in visibleTiles) {
+            val (z, x, y) = tile
+            val cacheKey = "$z/$x/$y"
+            if (tileCache.containsKey(cacheKey)) continue
+
+            scope.launch(Dispatchers.IO) {
+                var bitmap = MapLoader.getTile(z, x, y)
+                if (bitmap == null) {
+                    bitmap = SASMapLoader.getTile(z, x, y)
+                }
+                bitmap?.let {
+                    withContext(Dispatchers.Main) {
+                        tileCache[cacheKey] = it
+                    }
+                }
+            }
+        }
     }
-
-    // Рисуваме тестов тайл
-    paint.color = android.graphics.Color.rgb(
-        (x * 20) % 255,
-        (y * 20) % 255,
-        128
-    )
-    canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
-
-    paint.color = android.graphics.Color.BLACK
-    paint.textSize = 20f
-    canvas.drawText("$x,$y", 10f, 40f, paint)
-
-    return bitmap
 }

@@ -4,13 +4,14 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.borkozic.data.BorkozicStorage
+import com.borkozic.map.OzfDecoder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.util.Locale
+import java.util.*
 
 class MapViewModel(
     private val context: Context
@@ -22,6 +23,11 @@ class MapViewModel(
     private val _currentMap = MutableStateFlow<File?>(null)
     val currentMap: StateFlow<File?> = _currentMap
 
+    private val _mapInfo = MutableStateFlow<OzfDecoder.MapInfo?>(null)
+    val mapInfo: StateFlow<OzfDecoder.MapInfo?> = _mapInfo
+
+    private val decoder = OzfDecoder()
+
     init {
         loadMapFiles()
     }
@@ -31,23 +37,49 @@ class MapViewModel(
             withContext(Dispatchers.IO) {
                 val mapsDir = BorkozicStorage.getMapsDir(context)
                 if (mapsDir.exists()) {
+                    // Търсим .map файлове
                     val files = mapsDir.listFiles { file ->
-                        file.extension.lowercase(Locale.getDefault()) in listOf("ozf2", "ozfx3", "map")
+                        file.extension.lowercase(Locale.getDefault()) == "map"
                     }?.toList() ?: emptyList()
                     _mapFiles.value = files
-
-                    // Автоматично зареждане на първата карта
-                    if (files.isNotEmpty() && _currentMap.value == null) {
-                        _currentMap.value = files.firstOrNull {
-                            it.extension.lowercase(Locale.getDefault()) == "map"
-                        } ?: files.first()
-                    }
                 }
             }
         }
     }
 
     fun selectMap(mapFile: File) {
-        _currentMap.value = mapFile
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                // Затвори старата карта
+                decoder.closeImage()
+
+                // Зареди .map информация
+                val info = decoder.loadMapFile(mapFile)
+                _mapInfo.value = info
+
+                // Отвори .ozf2/.ozfx3 файла
+                if (info != null) {
+                    val imageFile = File(info.imagePath)
+                    if (imageFile.exists()) {
+                        decoder.openImage(imageFile)
+                        _currentMap.value = mapFile
+                    } else {
+                        // Опитай същата директория
+                        val altFile = File(mapFile.parentFile, info.imagePath)
+                        if (altFile.exists()) {
+                            decoder.openImage(altFile)
+                            _currentMap.value = mapFile
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fun getDecoder(): OzfDecoder = decoder
+
+    override fun onCleared() {
+        super.onCleared()
+        decoder.closeImage()
     }
 }

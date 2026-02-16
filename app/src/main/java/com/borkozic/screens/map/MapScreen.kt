@@ -17,6 +17,8 @@ import com.borkozic.data.BorkozicStorage
 import com.borkozic.services.location.LocationPermissionHelper
 import com.borkozic.services.location.LocationViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.borkozic.map.MapIndex
+import com.borkozic.map.MapLoader
 import com.borkozic.services.location.LocationViewModelFactory
 import kotlinx.coroutines.launch
 
@@ -30,6 +32,7 @@ fun MapScreen(
     )
 ) {
     val context = LocalContext.current
+    MapLoader.initialize(context)
     val scope = rememberCoroutineScope()
 
     // ⚡⚡⚡ GPS функционалност ⚡⚡⚡
@@ -41,6 +44,11 @@ fun MapScreen(
     // ⚡⚡⚡ Карти функционалност ⚡⚡⚡
     val mapFiles by mapViewModel.mapFiles.collectAsState()
     val currentMap by mapViewModel.currentMap.collectAsState()
+    val currentMapInfo = remember(currentMap) {
+        currentMap?.let { MapIndex.getMapByFile(it) }
+    }
+
+    val mapInfo by mapViewModel.mapInfo.collectAsState()
     var isMenuExpanded by remember { mutableStateOf(false) }
 
     val multiplePermissionsLauncher = rememberLauncherForActivityResult(
@@ -62,9 +70,12 @@ fun MapScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // ⚡⚡⚡ Карта ⚡⚡⚡
-        if (currentMap != null) {
-            MapView(mapFile = currentMap)
+        //  1. КАРТА (цял екран)
+        if (currentMapInfo != null) {
+            MapView(
+                mapInfo = currentMapInfo,
+                initialZoom = 10
+            )
         } else {
             Box(
                 modifier = Modifier.fillMaxSize(),
@@ -74,7 +85,7 @@ fun MapScreen(
             }
         }
 
-        // ⚡⚡⚡ GPS информация (горе-ляво) ⚡⚡⚡
+// 2. GPS ИНФОРМАЦИЯ (горе-ляво)
         Card(
             modifier = Modifier
                 .align(Alignment.TopStart)
@@ -119,35 +130,40 @@ fun MapScreen(
             }
         }
 
-        // ⚡⚡⚡ Контроли за карти (долу-дясно) ⚡⚡⚡
-        Card(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(16.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(8.dp)
+
+        //3. ⚡⚡⚡ КАРТА ИНФОРМАЦИЯ (горе-дясно)
+        if (mapInfo != null) {
+            Card(// Име на карта, размери, проекция
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(16.dp)
             ) {
-                Text("Карти: ${mapFiles.size}")
+                Column(
+                    modifier = Modifier.padding(8.dp)
+                ) {
+                    Text(
+                        text = "Карта",
+                        style = MaterialTheme.typography.titleMedium
+                    )
 
-                if (mapFiles.isNotEmpty()) {
-                    Button(
-                        onClick = { isMenuExpanded = true }
-                    ) {
-                        Text(currentMap?.name ?: "Избери карта")
-                    }
+                    Text(
+                        text = mapInfo?.name ?: "Без име",
+                        maxLines = 1,
+                        modifier = Modifier.widthIn(max = 200.dp)
+                    )
 
-                    DropdownMenu(
-                        expanded = isMenuExpanded,
-                        onDismissRequest = { isMenuExpanded = false }
-                    ) {
-                        mapFiles.forEach { file ->
-                            DropdownMenuItem(
-                                text = { Text(file.name) },
-                                onClick = {
-                                    mapViewModel.selectMap(file)
-                                    isMenuExpanded = false
-                                }
+                    Text(
+                        text = "Размер: ${mapInfo?.mapWidth} x ${mapInfo?.mapHeight}",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+// 4. КОНТРОЛИ ЗА КАРТИ (долу-дясно)
+                    mapInfo?.projection?.let {
+                        if (it.isNotEmpty()) {
+                            Text(
+                                text = "Проекция: $it",
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 1,
+                                modifier = Modifier.widthIn(max = 200.dp)
                             )
                         }
                     }
