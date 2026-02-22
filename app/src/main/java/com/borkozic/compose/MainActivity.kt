@@ -1,6 +1,7 @@
 package com.borkozic.compose
 
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,6 +13,7 @@ import com.borkozic.compose.screens.splash.SplashScreen
 import com.borkozic.compose.ui.theme.BorkozicComposeTheme
 
 class MainActivity : ComponentActivity() {
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -29,6 +31,7 @@ class MainActivity : ComponentActivity() {
                             }
                         )
                     } else {
+                        Log.d("MapScreen", "MapScreen composable entered")
                         MapScreen()
                     }
                 }

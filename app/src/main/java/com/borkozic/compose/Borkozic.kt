@@ -1,6 +1,8 @@
 package com.borkozic.compose
 
 import android.app.Application
+import com.borkozic.compose.data.BorkozicStorage
+import com.borkozic.library.map.MapIndex
 import com.borkozic.library.map.OzfDecoder
 
 class Borkozic : Application() {
@@ -16,11 +18,17 @@ class Borkozic : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+
+        // Зареждаме индекса на картите веднъж при стартиране
+        val mapsDir = BorkozicStorage.getMapsDir(this)
+        MapIndex.loadMaps(mapsDir)
+
+        // Тест за NDK (по желание)
+        val decoder = OzfDecoder()
+        mapsInited = true
     }
 
     fun initializeMaps() {
-        // Тест за NDK
-        val decoder = OzfDecoder()
-        mapsInited = true
+        // Може да остане празен или да се използва за презареждане
     }
 }

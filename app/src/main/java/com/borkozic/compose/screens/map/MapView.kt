@@ -1,6 +1,7 @@
 package com.borkozic.compose.screens.map
 
 import android.graphics.Bitmap
+import android.util.Log
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -12,6 +13,8 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
@@ -20,6 +23,7 @@ import com.borkozic.library.map.MapInformation
 import com.borkozic.library.map.MapLoader
 import com.borkozic.library.map.SASMapLoader
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.ceil
@@ -28,22 +32,26 @@ import kotlin.math.min
 
 @Composable
 fun MapView(
+
     modifier: Modifier = Modifier,
     mapInfo: MapInformation? = null,
     initialZoom: Int = 10
 ) {
+    Log.d("MapView", "MapView composable entered")
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val mapsDir = BorkozicStorage.getMapsDir(context)
     val tilesDir = BorkozicStorage.getTilesDir(context)
     val sasDir = BorkozicStorage.getSasDir(context)
-    var offsetX by remember { mutableFloatStateOf(0f) }
-    var offsetY by remember { mutableFloatStateOf(0f) }
+    Log.d("MapView", "mapsDir=$mapsDir, tilesDir=$tilesDir, sasDir=$sasDir")
+    var offsetX by remember { mutableFloatStateOf(-575f * 256) }
+    var offsetY by remember { mutableFloatStateOf(-375f * 256) }
     var zoom by remember { mutableIntStateOf(initialZoom) }
 
     val tileCache = remember { mutableMapOf<String, Bitmap>() }
     val tileSize = 256
-
+    val coroutineScope = rememberCoroutineScope()
+    val tileLoadTrigger = remember { mutableStateOf(0) } // за принудително прерисуване
     var visibleTiles by remember { mutableStateOf(emptyList<Triple<Int, Int, Int>>()) }
 
     // Функция за изчисляване на видимите тайлове
@@ -66,6 +74,15 @@ fun MapView(
     LaunchedEffect(Unit) {
         MapLoader.initialize(mapsDir, tilesDir)
         SASMapLoader.initialize(sasDir)
+        // Инициализираме онлайн системата
+        MapLoader.initializeTileSystem(
+            baseTilesDirectory = tilesDir,
+            scope = coroutineScope,
+            onTileLoaded = {
+                // Това се извиква от TileController, когато тайл е зареден
+                tileLoadTrigger.value += 1
+            }
+        )
     }
 
     LaunchedEffect(mapInfo) {
@@ -79,7 +96,12 @@ fun MapView(
         MapLoader.setZoom(zoom)
         SASMapLoader.setZoom(zoom)
     }
-
+    DisposableEffect(Unit) {
+        onDispose {
+            MapLoader.shutdownTileSystem()
+            coroutineScope.coroutineContext.cancel()
+        }
+    }
     Canvas(
         modifier = modifier
             .fillMaxSize()
@@ -147,7 +169,8 @@ fun MapView(
     }
 
     // Асинхронно зареждане на липсващи тайлове
-    LaunchedEffect(visibleTiles) {
+    LaunchedEffect(visibleTiles, tileLoadTrigger.value) {
+        Log.d("MapView", "Видими тайлове: ${visibleTiles.size}")
         for (tile in visibleTiles) {
             val (z, x, y) = tile
             val cacheKey = "$z/$x/$y"

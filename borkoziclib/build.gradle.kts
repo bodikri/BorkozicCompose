@@ -47,6 +47,8 @@ android {
 dependencies {
     implementation("gov.nist.math:jama:1.0.3")
     implementation(libs.androidx.core.ktx)
+    implementation("androidx.collection:collection-ktx:1.5.0")  // за LruCache
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
     testImplementation(libs.junit)

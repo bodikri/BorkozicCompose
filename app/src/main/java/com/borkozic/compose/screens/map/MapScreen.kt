@@ -1,6 +1,7 @@
 package com.borkozic.compose.screens.map
 
 import android.content.pm.PackageManager
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -48,7 +49,6 @@ fun MapScreen(
     val currentMapInfo = remember(currentMap) {
         currentMap?.let { MapIndex.getMapByFile(it) }
     }
-
     val mapInfo by mapViewModel.mapInfo.collectAsState()
     var isMenuExpanded by remember { mutableStateOf(false) }
 
@@ -62,7 +62,15 @@ fun MapScreen(
             // Покажете съобщение
         }
     }
+    val mapViewModel: MapViewModel = viewModel(factory = MapViewModelFactory(context))
 
+    LaunchedEffect(Unit) {
+        MapLoader.initialize(
+            BorkozicStorage.getMapsDir(context),
+            BorkozicStorage.getTilesDir(context)
+        )
+        SASMapLoader.initialize(BorkozicStorage.getSasDir(context))
+    }
     // ⚡⚡⚡ Автоматично стартиране на LocationService ⚡⚡⚡
     LaunchedEffect(Unit) {
         MapLoader.initialize(mapsDir, tilesDir)
@@ -75,11 +83,13 @@ fun MapScreen(
     Box(modifier = Modifier.fillMaxSize()) {
         //  1. КАРТА (цял екран)
         if (currentMapInfo != null) {
+            Log.d("MapScreen", "Showing MapView with map: ${currentMapInfo.name}")
             MapView(
                 mapInfo = currentMapInfo,
                 initialZoom = 10
             )
         } else {
+            Log.d("MapScreen", "No map selected, showing placeholder")
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center

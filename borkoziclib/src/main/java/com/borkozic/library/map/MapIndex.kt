@@ -1,6 +1,7 @@
 package com.borkozic.library.map
 
 import android.content.Context
+import android.util.Log
 import java.io.BufferedReader
 import java.io.File
 import java.io.FileReader
@@ -11,16 +12,20 @@ object MapIndex {
     private val maps = mutableListOf<MapInformation>()
 
     fun loadMaps(mapsDir: File) {
+        Log.d("MapIndex", "loadMaps called with dir: ${mapsDir.absolutePath}")
         if (!mapsDir.exists()) return
-
+        Log.e("MapIndex", "mapsDir does not exist!")
         val mapFiles = mapsDir.listFiles { file ->
             file.extension.equals("map", ignoreCase = true)
-        } ?: return
+        } ?: return.also { Log.e("MapIndex", "No .map files found") }
 
         maps.clear()
         mapFiles.forEach { file ->
-            parseMapFile(file)?.let { maps.add(it) }
+            parseMapFile(file)?.let { maps.add(it)
+                Log.d("MapIndex", "Parsed map: ${it.name}")}
+
         }
+        Log.d("MapIndex", "Total maps loaded: ${maps.size}")
     }
 
     private fun parseMapFile(file: File): MapInformation? {

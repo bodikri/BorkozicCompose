@@ -1,24 +1,47 @@
 package com.borkozic.library.map
 
-import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
+import com.borkozic.library.map.online.TileController
+import com.borkozic.library.map.online.TileLoader
+import com.borkozic.library.map.online.TileProvider
+import com.borkozic.library.map.online.TileCache
+import kotlinx.coroutines.CoroutineScope
+import android.util.Log
 import java.io.File
 
 object MapLoader {
 
-    // Премахваме полето appContext - вече не е нужно
     private var currentZoom: Int = 10
     private var currentMapInfo: MapInformation? = null
     private var mapIndex: MapIndex? = null
     private var mapsDir: File? = null
     private var tilesDir: File? = null
+    private var tileController: TileController? = null
+    private var baseTilesDir: File? = null
+    private var tileCache: TileCache? = null
+    private var coroutineScope: CoroutineScope? = null
+    private var onTileLoadedCallback: (() -> Unit)? = null
 
     fun initialize(mapsDirectory: File, tilesDirectory: File) {
         mapsDir = mapsDirectory
         tilesDir = tilesDirectory
-        MapIndex.loadMaps(mapsDirectory)
-        mapIndex = MapIndex
+    }
+
+    fun initializeTileSystem(
+        baseTilesDirectory: File,
+        scope: CoroutineScope,
+        onTileLoaded: () -> Unit
+    ) {
+        this.baseTilesDir = baseTilesDirectory
+        this.coroutineScope = scope
+        this.onTileLoadedCallback = onTileLoaded
+        tileCache = TileCache(50) // капацитет 50 тайла в паметта
+        tileController = TileController(
+            baseDir = baseTilesDirectory,
+            tileCache = tileCache!!,
+            coroutineScope = scope,
+            onTileLoaded = onTileLoaded
+        )
     }
 
     fun setMap(mapInfo: MapInformation) {
@@ -30,27 +53,29 @@ object MapLoader {
     }
 
     fun getTile(zoom: Int, x: Int, y: Int): Bitmap? {
-        val tilesDirectory = tilesDir ?: return null
-        val osmTile = loadOsmTile(zoom, x, y, tilesDirectory)
-        if (osmTile != null) return osmTile
+        val tilesDir = tilesDir ?: return null
+        val provider = TileProvider.OSM // засега само OSM
 
+        // Първо опитваме от диска
+        val diskBitmap = TileLoader.loadTileFromDisk(tilesDir, provider, x, y, zoom)
+        if (diskBitmap != null) {
+            Log.d("MapLoader", "✅ Loaded from disk: $zoom/$x/$y")
+            return diskBitmap
+        }
+
+        // Ако не е на диска, заявяваме изтегляне
+        tileController?.requestTile(provider, x, y, zoom)
+        Log.d("MapLoader", "⏳ Requested download: $zoom/$x/$y")
         return null
     }
 
-    private fun loadOsmTile(zoom: Int, x: Int, y: Int, tilesDir: File): Bitmap? {
-        val tileFile = File(tilesDir, "$zoom/$x-$y")
-        if (!tileFile.exists()) return null
-        return try {
-            BitmapFactory.decodeFile(tileFile.absolutePath)
-        } catch (e: Exception) {
-            e.printStackTrace()
-            null
-        }
-    }
-
-    fun hasOsmTile(zoom: Int, x: Int, y: Int, tilesDir: File): Boolean {
-        val tileFile = File(tilesDir, "$zoom/$x-$y")
-        return tileFile.exists()
+    fun shutdownTileSystem() {
+        tileController?.shutdown()
+        tileController = null
+        tileCache = null
+        baseTilesDir = null
+        coroutineScope = null
+        onTileLoadedCallback = null
     }
 
     fun getCurrentMap(): MapInformation? = currentMapInfo
