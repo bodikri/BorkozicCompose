@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-    namespace = "com.borkozic"
+    namespace = "com.borkozic.compose"
     compileSdk {
         version = release(36) {
             minorApiLevel = 1
@@ -12,7 +12,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.borkozic"
+        applicationId = "com.borkozic.compose"
         minSdk = 29
         targetSdk = 36
         versionCode = 1
@@ -45,6 +45,8 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation("androidx.compose.ui:ui:1.7.5")
+    implementation("androidx.navigation:navigation-compose:2.8.3")
+    implementation("com.google.android.gms:play-services-location:21.3.0")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
